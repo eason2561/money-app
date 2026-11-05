@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src https://api.github.com; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'">
+  <meta name="robots" content="noindex">
+  <title>Household Money</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="#/overview" class="brand">Household Money</a>
+    <span id="status" class="status"></span>
+    <button id="refresh" type="button" class="btn ghost">Refresh</button>
+  </header>
+  <nav class="tabs" aria-label="Views">
+    <a href="#/overview" data-tab="overview">Overview</a>
+    <a href="#/accounts" data-tab="accounts">Accounts</a>
+    <a href="#/groups" data-tab="groups">Spending</a>
+    <a href="#/trend" data-tab="trend">Trend</a>
+    <a href="#/loop" data-tab="loop">Close the loop</a>
+    <a href="#/watch" data-tab="watch">Watch</a>
+    <a href="#/tx" data-tab="tx">Transactions</a>
+    <a href="#/settings" data-tab="settings">Settings</a>
+  </nav>
+  <section id="period" class="period" aria-label="Time period"></section>
+  <main id="view" tabindex="-1"></main>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
