@@ -4,7 +4,7 @@ import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFA
 import * as M from "./model.js";
 import { sankey, bars, hbars, money, esc } from "./charts.js";
 
-export const APP_VERSION = "2026.11.05-5";
+export const APP_VERSION = "2026.11.05-6";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
