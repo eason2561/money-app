@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private wiki repo,
 // written by ./money --publish (rebuilt by the wiki's "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js";
-import * as M from "./model.js";
-import { sankey, bars, hbars, money, esc } from "./charts.js";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.05-7";
+import * as M from "./model.js?v=2026.11.05-7";
+import { sankey, bars, hbars, money, esc } from "./charts.js?v=2026.11.05-7";
 
-export const APP_VERSION = "2026.11.05-6";
+export const APP_VERSION = "2026.11.05-7";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
