@@ -6,20 +6,22 @@ export const money = (v) => {
 };
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-function wrap(svg, onPick) {
+function wrap(svg, onPick, onBand, bandEdges) {
   const w = document.createElement("div");
   w.className = "chart-wrap";
   w.innerHTML = svg;
-  if (onPick) w.addEventListener("click", (ev) => {
+  if (onPick || onBand) w.addEventListener("click", (ev) => {
+    const band = ev.target.closest("[data-band]")?.dataset.band;
+    if (band !== undefined && onBand) { onBand(bandEdges[Number(band)]); return; }
     const id = ev.target.closest("[data-pick]")?.dataset.pick;
-    if (id) onPick(id);
+    if (id && onPick) onPick(id);
   });
   return w;
 }
 
 // Layered flow diagram. columns: [[{id, label, cls}]]; edges: [{from, to, v}] between adjacent columns.
 // Node ids must be unique per column; the same id may appear in two columns (e.g. from/to accounts).
-export function sankey(columns, edges, { width = 960, minH = 300, onPick } = {}) {
+export function sankey(columns, edges, { width = 960, minH = 300, onPick, onBand } = {}) {
   const key = (ci, id) => `${ci}\u0000${id}`;
   const outV = new Map(), inV = new Map();
   for (const e of edges) {
@@ -58,7 +60,7 @@ export function sankey(columns, edges, { width = 960, minH = 300, onPick } = {})
     const a = pos.get(key(e.c, e.from)), b = pos.get(key(e.c + 1, e.to));
     const h = Math.max(e.v * scale, 0.5), x0 = a.x + nw, x1 = b.x, c = (x0 + x1) / 2, y0 = a.oy, y1 = y1s.get(e);
     a.oy += e.v * scale;
-    p.push(`<path class="band ${e.cls || b.n.cls || a.n.cls || ""}" d="M${x0},${y0} C${c},${y0} ${c},${y1} ${x1},${y1} L${x1},${y1 + h} C${c},${y1 + h} ${c},${y0 + h} ${x0},${y0 + h} Z"><title>${esc(a.n.label)} → ${esc(b.n.label)}: ${money(e.v)}</title></path>`);
+    p.push(`<path class="band ${e.cls || b.n.cls || a.n.cls || ""}${onBand ? " pickable" : ""}" data-band="${edges.indexOf(e)}" d="M${x0},${y0} C${c},${y0} ${c},${y1} ${x1},${y1} L${x1},${y1 + h} C${c},${y1 + h} ${c},${y0 + h} ${x0},${y0 + h} Z"><title>${esc(a.n.label)} → ${esc(b.n.label)}: ${money(e.v)}</title></path>`);
   }
   const lastY = new Map();
   let maxY = height;
@@ -76,7 +78,7 @@ export function sankey(columns, edges, { width = 960, minH = 300, onPick } = {})
   }
   p[0] = `<svg viewBox="0 0 ${width} ${Math.ceil(maxY)}" class="chart sankey" role="img" aria-label="Flow diagram">`;
   p.push("</svg>");
-  return wrap(p.join(""), onPick);
+  return wrap(p.join(""), onPick, onBand, edges);
 }
 
 // Paired bars per bucket (in vs out, net below), or one series when `sel` is set.

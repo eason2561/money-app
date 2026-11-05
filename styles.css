@@ -81,3 +81,7 @@ svg g.pickable { cursor: pointer; }
 svg g.pickable:hover .hit { fill: color-mix(in srgb, var(--accent) 8%, transparent); }
 svg [data-pick] { cursor: pointer; }
 svg .lbl.halo { paint-order: stroke; stroke: var(--card); stroke-width: 4px; stroke-linejoin: round; }
+svg .band.pickable { cursor: pointer; }
+.detail { margin-top: 10px; }
+.detail h3 { font-size: 15px; margin: 6px 0; display: flex; justify-content: space-between; gap: 8px; }
+.detail .close { font-weight: 400; font-size: 13px; }

@@ -4,7 +4,7 @@ import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFA
 import * as M from "./model.js";
 import { sankey, bars, hbars, money, esc } from "./charts.js";
 
-export const APP_VERSION = "2026.11.05-3";
+export const APP_VERSION = "2026.11.05-4";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -74,6 +74,29 @@ function payrollNote(pay) {
   return `<p class="note">Before pay reaches the bank: ${e.map(([k, v]) => `${esc(k)} ${money(v)}`).join(" · ")} (total ${money(tot)}; not in the figures above).</p>`;
 }
 
+// Clicked band -> what's inside it: a breakdown by payee (click one for its transactions), or the
+// transactions themselves when there are few or only one payee.
+function showDetail(card, title, list, note = "") {
+  card.querySelector(".detail")?.remove();
+  const box = document.createElement("div");
+  box.className = "detail";
+  const total = Math.abs(list.reduce((a, r) => a + r.flow, 0));
+  box.append(el(`<h3><span>${esc(title)}: ${money(total)}</span><a href="#" class="close">close</a></h3>${note ? `<p class="note">${esc(note)}</p>` : ""}`));
+  box.querySelector(".close").addEventListener("click", (e) => { e.preventDefault(); box.remove(); });
+  const byLabel = new Map();
+  for (const r of list) byLabel.set(r.label, (byLabel.get(r.label) || 0) + r.flow);
+  for (const [k, v] of byLabel) byLabel.set(k, Math.abs(v));
+  const inner = document.createElement("div");
+  if (list.length > 12 && byLabel.size > 1) {
+    inner.append(hbars([...byLabel].sort((a, b) => b[1] - a[1]).map(([label, v]) => ({ label, v })), {
+      onPick: (label) => { inner.querySelector(".sub")?.remove(); const sub = document.createElement("div"); sub.className = "sub";
+        sub.append(el(`<h3><span>${esc(label)}</span></h3>`), txTable(list.filter((r) => r.label === label))); inner.append(sub); sub.scrollIntoView({ behavior: "smooth", block: "nearest" }); } }));
+  } else if (list.length) inner.append(txTable(list));
+  box.append(inner);
+  card.append(box);
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function overview(rows, prev, p) {
   const t = M.totals(model, rows);
   const b = M.previous(p).from >= model.from ? M.totals(model, prev) : {};
@@ -108,13 +131,34 @@ function overview(rows, prev, p) {
   else if (t.buffer < 0) srcSum.set("Drawn from checking", -t.buffer), add(0, "Drawn from checking", "H", -t.buffer, "in");
   const right = [...uses].filter(([, v]) => v > 0.5).sort((a, c) => c[1] - a[1]);
   const keep = right.slice(0, 15), rest = right.slice(15).reduce((a, [, v]) => a + v, 0);
+  const kept = new Set(keep.map(([k]) => k));
+  const savingsAcct = (id) => model.accounts[id]?.type === "savings";
+  const useKey = (r) => {
+    let k = null;
+    if (r.kind === "spend" || r.kind === "debt") k = r.group;
+    else if (r.kind === "other card") k = "Card purchases with no detail";
+    else if (r.kind === "saving") k = r.label;
+    else if (r.kind === "unmatched transfer") k = "Moved out (accounts not exported)";
+    else if (r.kind === "internal" && savingsAcct(r.account) && !savingsAcct(r.pair)) k = "Kept in savings";
+    if (k && !kept.has(k) && uses.has(k)) k = "Everything else";
+    return k;
+  };
   for (const [k, v] of keep) add(1, "H", k, v, cls.get(k) || "");
   if (rest > 0.5) add(1, "H", "Everything else", rest, "");
   const cols = [[...srcSum.keys()].map((id) => ({ id, label: id, cls: "in" })), [{ id: "H", label: "Household", cls: "acct" }],
     [...keep.map(([k]) => ({ id: k, label: k, cls: cls.get(k) || "" })), { id: "Everything else", label: "Everything else" }]];
   view.append(el(`<h2>How money moves</h2>`));
   const card = el(`<div class="card"></div>`).firstChild;
-  card.append(sankey(cols, edges, { onPick: (id) => { if (uses.has(id) && !cls.get(id)) { location.hash = "#/groups"; drill = { group: id, label: null }; render(); } } }));
+  card.append(sankey(cols, edges, {
+    onPick: (id) => { if (uses.has(id) && !cls.get(id)) { location.hash = "#/groups"; drill = { group: id, label: null }; render(); } },
+    onBand: (e) => {
+      if (e.c === 0) {
+        if (e.from.startsWith("Drawn from")) return showDetail(card, e.from, [], "Not a payee: the difference between money in and money out, covered from balances.");
+        return showDetail(card, e.from, rows.filter((r) => r.kind === "income" && src(r.label) === e.from));
+      }
+      if (e.to === "Left in checking") return showDetail(card, e.to, [], "Not a payee: what money in exceeded money out by, left in checking and on the cards.");
+      showDetail(card, e.to, rows.filter((r) => useKey(r) === e.to));
+    } }));
   card.append(el(`<div class="legend"><span><i class="sw in"></i>money in</span><span><i class="sw out"></i>spending and bills</span><span><i class="sw leak"></i>can't see what it bought</span><span><i class="sw save"></i>saved or kept</span></div>`));
   view.lastChild.after(card);
   const size = M.bucketSize(p);
@@ -126,7 +170,7 @@ function overview(rows, prev, p) {
 }
 
 function accounts(rows, prev, p) {
-  view.append(el(`<h2>Where money lands and what each account pays</h2><p class="note">Income on the left, the account it lands in, and what that account spends it on. Click an account for its transactions.</p>`));
+  view.append(el(`<h2>Where money lands and what each account pays</h2><p class="note">Income on the left, the account it lands in, and what that account spends it on. Click a band to see what is in it, or an account for its transactions.</p>`));
   const edges = [], add = (c, from, to, v, cls) => { if (v > 0.5) edges.push({ c, from, to, v, cls }); };
   const inc = M.sumBy(rows, (r) => `${r.label}\u0000${r.account}`, (r) => r.kind === "income");
   const srcIds = new Set(), acctIds = new Set(), useIds = new Map();
@@ -152,10 +196,16 @@ function accounts(rows, prev, p) {
   for (const [k, v] of sp2) { const [a, u] = k.split("\u0000"); add(1, a, u, v, useIds.get(u)); }
   const topUses = [...big].map((u) => [u, useTot.get(u)]).sort((a, b) => b[1] - a[1]);
   topUses.push(["Everything else", 0]);
+  const srcOf = (l) => (bigSrc.has(l) ? l : "Other income");
+  const useAcc = (r) => { const u = useOf(r)[0]; return big.has(u) ? u : "Everything else"; };
+  const isUse = (r) => M.OUT_KINDS.has(r.kind) || r.kind === "saving" || (r.kind === "unmatched transfer" && r.flow < 0);
   const c1 = el(`<div class="card"></div>`).firstChild;
   c1.append(sankey([[...srcIds].map((id) => ({ id, label: id, cls: "in" })), [...acctIds].map((id) => ({ id, label: name(id), cls: "acct" })),
     topUses.map(([u]) => ({ id: u, label: u, cls: useIds.get(u) }))], edges, { minH: 420,
-    onPick: (id) => { if (model.accounts[id]) { state.tx = { account: id }; saveState(); location.hash = "#/tx"; } } }));
+    onPick: (id) => { if (model.accounts[id]) { state.tx = { account: id }; saveState(); location.hash = "#/tx"; } },
+    onBand: (e) => e.c === 0
+      ? showDetail(c1, `${e.from} → ${name(e.to)}`, rows.filter((r) => r.kind === "income" && r.account === e.to && srcOf(r.label) === e.from))
+      : showDetail(c1, `${name(e.from)} → ${e.to}`, rows.filter((r) => r.account === e.from && isUse(r) && useAcc(r) === e.to)) }));
   view.append(c1);
 
   view.append(el(`<h2>Transfers between accounts</h2><p class="note">From (left) to (right). Card payments are transfers too: the purchases are counted on the card.</p>`));
@@ -164,7 +214,11 @@ function accounts(rows, prev, p) {
   const froms = [...new Set(f.map((e) => e.from))], tos = [...new Set(f.map((e) => e.to))];
   const c2 = el(`<div class="card"></div>`).firstChild;
   if (f.length) c2.append(sankey([froms.map((id) => ({ id, label: name(id), cls: "acct" })), tos.map((id) => ({ id, label: name(id), cls: id === "Accounts not exported" ? "save" : "acct" }))],
-    f.map((e) => ({ c: 0, from: e.from, to: e.to, v: e.v, cls: e.to === "Accounts not exported" ? "save" : "" })), { minH: 260 }));
+    f.map((e) => ({ c: 0, from: e.from, to: e.to, v: e.v, cls: e.to === "Accounts not exported" ? "save" : "" })), { minH: 260,
+      onBand: (e) => showDetail(c2, `${name(e.from)} → ${name(e.to)}`, rows.filter((r) =>
+        e.to === "Accounts not exported" ? r.account === e.from && r.kind === "unmatched transfer" && r.flow < 0
+        : e.from === "Accounts not exported" ? r.account === e.to && r.flow > 0 && (r.kind === "unmatched transfer" || (r.kind === "internal" && r.pair === "?"))
+        : r.account === e.from && r.pair === e.to && r.flow < 0)) }));
   else c2.append(el(`<p class="note">No transfers in this period.</p>`));
   view.append(c2);
 
@@ -177,7 +231,7 @@ function accounts(rows, prev, p) {
     else if (r.flow > 0) a.inOut += r.flow; else a.outOut -= r.flow;
   }
   view.append(el(`<h2>Each account</h2><div class="card"><table><tr><th>Account</th><th>Data</th><th class="n">In from outside</th><th class="n">Out to outside</th><th class="n">Transfers in</th><th class="n">Transfers out</th><th class="n">Net</th></tr>
-    ${Object.values(model.accounts).filter((a) => a.exported).map((a) => { const x = per[a.id] || { inOut: 0, outOut: 0, tin: 0, tout: 0, net: 0 };
+    ${Object.values(model.accounts).filter((a) => a.exported && !["loan", "investment", "benefit", "wallet"].includes(a.type)).map((a) => { const x = per[a.id] || { inOut: 0, outOut: 0, tin: 0, tout: 0, net: 0 };
       return `<tr class="click" data-acct="${esc(a.id)}"><td><b>${esc(name(a.id))}</b><br><span class="note">${esc(a.role || a.type)}</span></td><td class="note">${a.from} to ${a.to}</td><td class="n">${money(x.inOut)}</td><td class="n">${money(x.outOut)}</td><td class="n">${money(x.tin)}</td><td class="n">${money(x.tout)}</td><td class="n ${x.net < 0 ? "neg" : ""}">${money(x.net)}</td></tr>`; }).join("")}
     </table></div>`));
   view.querySelectorAll("[data-acct]").forEach((tr) => tr.addEventListener("click", () => { state.tx = { account: tr.dataset.acct }; saveState(); location.hash = "#/tx"; }));
