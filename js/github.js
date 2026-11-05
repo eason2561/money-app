@@ -38,3 +38,31 @@ export async function fetchModel(s = loadSettings()) {
   try { localStorage.setItem(CACHE, text); } catch { /* too big or blocked: fine, just not cached */ }
   return model;
 }
+
+// Read a text file (with its sha, needed to update it) and write it back as a commit.
+// Writing needs a token with Contents: Read and write.
+function contentsUrl(s, path) {
+  return `${API}/repos/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/contents/` + path.split("/").map(encodeURIComponent).join("/");
+}
+const b64 = (text) => { const bytes = new TextEncoder().encode(text); let bin = ""; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin); };
+const unb64 = (b) => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g, "")), (c) => c.charCodeAt(0)));
+
+export async function readFile(path, s = loadSettings()) {
+  const res = await fetch(contentsUrl(s, path) + (s.branch ? `?ref=${encodeURIComponent(s.branch)}` : ""), { cache: "no-store",
+    headers: { Authorization: `Bearer ${s.token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" } });
+  if (res.status === 401) throw new Error("GitHub refused the token (401). Check it in Settings.");
+  if (res.status === 404) return { text: "", sha: null };
+  if (!res.ok) throw new Error(`GitHub error ${res.status} reading ${path}.`);
+  const j = await res.json();
+  return { text: unb64(j.content), sha: j.sha };
+}
+
+export async function writeFile(path, text, sha, message, s = loadSettings()) {
+  const body = { message, content: b64(text), ...(sha ? { sha } : {}), ...(s.branch ? { branch: s.branch } : {}) };
+  const res = await fetch(contentsUrl(s, path), { method: "PUT", headers: { Authorization: `Bearer ${s.token}`,
+    Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (res.status === 403 || res.status === 404) throw new Error("The token can't save (it needs Contents: Read and write on the repo).");
+  if (res.status === 409) throw new Error("Someone else changed the file first; try again.");
+  if (!res.ok) throw new Error(`GitHub error ${res.status} saving ${path}.`);
+  return res.json();
+}

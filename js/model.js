@@ -11,7 +11,8 @@ export function prepare(raw) {
   const tx = raw.tx.map((t, i) => ({
     i, date: t[ix.date], account: t[ix.account], flow: t[ix.flow], kind: t[ix.kind],
     group: t[ix.group], label: t[ix.label], pair: t[ix.pair], desc: t[ix.description],
-    to: ix.to === undefined ? "" : t[ix.to], check: ix.check === undefined ? "" : t[ix.check] }));
+    to: ix.to === undefined ? "" : t[ix.to], check: ix.check === undefined ? "" : t[ix.check],
+    key: ix.key === undefined ? "" : t[ix.key] }));
   const accounts = Object.fromEntries(raw.accounts.map((a) => [a.id, a]));
   // First and last month each label appears in, for "new payee" and "one-off" checks.
   const seen = {};

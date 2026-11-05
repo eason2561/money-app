@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private wiki repo,
 // written by ./money --publish (rebuilt by the wiki's "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS } from "./github.js";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js";
 import * as M from "./model.js";
 import { sankey, bars, hbars, money, esc } from "./charts.js";
 
-export const APP_VERSION = "2026.11.05-4";
+export const APP_VERSION = "2026.11.05-5";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -314,12 +314,69 @@ function watchView(rows, prev, p) {
   }
 }
 
+// ---------- recategorising ----------
+// A change is written to meta/money/overrides.csv in the repo (the model workflow then rebuilds
+// model.json); until that rebuild arrives the change is kept on this device and applied on load.
+const EDITABLE = new Set(["spend", "debt", "income", "other card"]);
+const PENDING = "money:overrides";
+const isIncome = (r) => r.kind === "income";
+function groupOptions(r) {
+  const same = new Set(model.tx.filter((t) => EDITABLE.has(t.kind) && isIncome(t) === isIncome(r)).map((t) => t.group));
+  return [...same].sort();
+}
+function pending() { try { return JSON.parse(localStorage.getItem(PENDING) || "{}"); } catch { return {}; } }
+function applyPending(m) {
+  const ov = pending();
+  for (const r of m.tx) {
+    const o = ov[r.key] || ov[`label:${r.label}`];
+    if (o && EDITABLE.has(r.kind)) r.group = o.group;
+  }
+}
+async function recategorise(r, group, allFromPayee) {
+  const key = allFromPayee ? `label:${r.label}` : r.key;
+  const ov = pending(); ov[key] = { group, at: new Date().toISOString() };
+  try { localStorage.setItem(PENDING, JSON.stringify(ov)); } catch { /* fine */ }
+  applyPending(model);
+  statusEl.textContent = "Saving…";
+  try {
+    const path = "meta/money/overrides.csv";
+    const { text, sha } = await readFile(path);
+    const lines = (text || "key,group,label,set_on,note\n").replace(/\n*$/, "\n").split("\n").filter(Boolean);
+    const csvCell = (v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const kept = lines.filter((l, i) => i === 0 || !l.startsWith(csvCell(key) + ","));
+    kept.push([key, group, "", new Date().toISOString().slice(0, 10), allFromPayee ? "all from this payee" : `${r.date} ${money(r.flow)}`].map(csvCell).join(","));
+    await writeFile(path, kept.join("\n") + "\n", sha, `Money: ${allFromPayee ? `all "${r.label}"` : `${r.label} ${r.date}`} -> ${group} (dashboard)`);
+    statusEl.textContent = `Saved: ${r.label} → ${group}. The model rebuilds in a minute or two.`;
+  } catch (err) {
+    statusEl.textContent = `${err.message} The change shows on this device only.`;
+  }
+  render();
+}
+
 function txTable(list, showCheck = false) {
   const sorted = [...list].sort((a, b) => (a.date < b.date ? 1 : -1));
   const total = list.reduce((a, r) => a + r.flow, 0);
   const shown = sorted.slice(0, 500);
-  return el(`<div class="card"><p class="note">${list.length} transactions, net ${money(total)}${list.length > 500 ? " (newest 500 shown)" : ""}</p><table><tr><th>Date</th><th>Account</th><th>Payee</th><th>Group</th>${showCheck ? "<th>Check</th>" : ""}<th class="n">Amount</th></tr>
-    ${shown.map((r) => `<tr><td>${r.date}</td><td>${esc(name(r.account))}</td><td>${esc(r.label)}<br><span class="note">${esc(r.desc)}</span></td><td>${esc(r.kind === "internal" ? `transfer${r.pair && r.pair !== "?" ? ` ↔ ${name(r.pair)}` : ""}` : r.group)}</td>${showCheck ? `<td><span class="tag ${r.check}">${esc(r.check || "")}</span></td>` : ""}<td class="n ${r.flow < 0 ? "" : "pos"}">${money(r.flow)}</td></tr>`).join("")}</table></div>`);
+  const byKey = new Map(shown.map((r) => [r.key, r]));
+  const groupCell = (r) => {
+    if (r.kind === "internal") return esc(`transfer${r.pair && r.pair !== "?" ? ` ↔ ${name(r.pair)}` : ""}`);
+    if (!EDITABLE.has(r.kind) || !r.key) return esc(r.group);
+    const opts = groupOptions(r);
+    return `<select class="regroup" data-key="${esc(r.key)}" aria-label="Group">${opts.map((g) => `<option ${g === r.group ? "selected" : ""}>${esc(g)}</option>`).join("")}<option value="__new">New group…</option></select>`;
+  };
+  const box = el(`<div class="card"><p class="note">${list.length} transactions, net ${money(total)}${list.length > 500 ? " (newest 500 shown)" : ""}. Change a group with its dropdown.</p><table><tr><th>Date</th><th>Account</th><th>Payee</th><th>Group</th>${showCheck ? "<th>Check</th>" : ""}<th class="n">Amount</th></tr>
+    ${shown.map((r) => `<tr><td>${r.date}</td><td>${esc(name(r.account))}</td><td>${esc(r.label)}<br><span class="note">${esc(r.desc)}</span></td><td>${groupCell(r)}</td>${showCheck ? `<td><span class="tag ${r.check}">${esc(r.check || "")}</span></td>` : ""}<td class="n ${r.flow < 0 ? "" : "pos"}">${money(r.flow)}</td></tr>`).join("")}</table></div>`);
+  box.addEventListener("change", (ev) => {
+    const sel = ev.target.closest("select.regroup"); if (!sel) return;
+    const r = byKey.get(sel.dataset.key); if (!r) return;
+    let group = sel.value;
+    if (group === "__new") { group = (prompt("Name of the new group:") || "").trim(); if (!group) { sel.value = r.group; return; } }
+    if (group === r.group) return;
+    const others = model.tx.filter((t) => t.label === r.label && t.key !== r.key && EDITABLE.has(t.kind)).length;
+    const all = others > 0 && confirm(`Move all ${others + 1} "${r.label}" transactions to ${group}?\n\nOK = all of them (now and in future), Cancel = just this one.`);
+    recategorise(r, group, all);
+  });
+  return box;
 }
 
 function txView(rows) {
@@ -348,7 +405,7 @@ function settings() {
     <form class="settings card" id="sf">
       <p class="note">This page has no data of its own. It reads <code>${esc(s.path)}</code> from your private repo through GitHub's API with a token kept only in this browser.</p>
       <label>GitHub token</label><input name="token" type="password" autocomplete="off" placeholder="github_pat_…" value="${esc(s.token)}">
-      <p class="note">Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>: Only select repositories → <b>${esc(s.repo)}</b> → Repository permissions → <b>Contents: Read-only</b>. Set an expiry you're happy with.</p>
+      <p class="note">Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>: Only select repositories → <b>${esc(s.repo)}</b> → Repository permissions → <b>Contents: Read-only</b> to view, or <b>Read and write</b> to change groups from the dropdowns. Set an expiry you're happy with.</p>
       <label>Owner</label><input name="owner" value="${esc(s.owner)}">
       <label>Repository</label><input name="repo" value="${esc(s.repo)}">
       <label>Branch</label><input name="branch" value="${esc(s.branch)}">
@@ -388,12 +445,20 @@ function render() {
 async function load(force = false) {
   if (!model || force) {
     const c = cachedModel();
-    if (c && !model) { model = M.prepare(c); statusEl.textContent = `Data to ${model.to} (cached)`; render(); }
+    if (c && !model) { model = M.prepare(c); applyPending(model); statusEl.textContent = `Data to ${model.to} (cached)`; render(); }
   }
   if (!isConfigured()) { render(); return; }
   statusEl.textContent = "Loading…";
   try {
     model = M.prepare(await fetchModel());
+    // Forget local changes the rebuilt model already carries, then apply any still waiting.
+    const ov = pending();
+    for (const [k, o] of Object.entries(ov)) {
+      const hit = model.tx.filter((r) => (k.startsWith("label:") ? `label:${r.label}` : r.key) === k);
+      if (hit.length && hit.every((r) => r.group === o.group)) delete ov[k];
+    }
+    try { localStorage.setItem(PENDING, JSON.stringify(ov)); } catch { /* fine */ }
+    applyPending(model);
     statusEl.textContent = `Data to ${model.to} · built ${model.generated.slice(0, 10)}`;
   } catch (err) {
     statusEl.textContent = err.message;
