@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private wiki repo,
 // written by ./money --publish (rebuilt by the wiki's "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-6";
-import * as M from "./model.js?v=2026.11.06-6";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-6";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-7";
+import * as M from "./model.js?v=2026.11.06-7";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-7";
 
-export const APP_VERSION = "2026.11.06-6";
+export const APP_VERSION = "2026.11.06-7";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -304,7 +304,25 @@ function loop(rows) {
   }));
 }
 
+// Recurring bills checked against their payments (meta/money/bills.csv; whole history, not the period).
+function billsCard() {
+  const bills = model.bills || [];
+  if (!bills.length) return;
+  const order = { "no payments": 0, stopped: 1, check: 2, ok: 3 };
+  const list = [...bills].sort((a, b) => order[a.status] - order[b.status] || a.bill.localeCompare(b.bill));
+  const flagged = list.filter((b) => b.status !== "ok").length;
+  const card = el(`<div class="card"><table><tr><th>Bills<br><span class="note">Each recurring bill against its payments, over all the data: missed, paid twice, changed or stopped. ${flagged ? `${flagged} to look at.` : "All as expected."} Tap a bill for details.</span></th><th class="n">Last paid</th></tr>
+    ${list.map((b, i) => `<tr class="click" data-b="${i}"><td>${esc(b.bill)} <span class="tag ${b.status === "ok" ? "verified" : b.status === "check" ? "" : "missing"}">${esc(b.status)}</span><br><span class="note">${esc(b.amount ? `expected ${b.amount.replace("|", " + ")} ${b.cadence}` : `varies, ${b.cadence}`)}</span></td><td class="n">${b.last ? `${esc(b.last)}<br>${money(b.last_amount)}` : "never"}</td></tr>`).join("")}</table></div>`).firstChild;
+  card.querySelectorAll("tr[data-b]").forEach((tr) => tr.addEventListener("click", () => {
+    const b = list[Number(tr.dataset.b)];
+    const note = b.issues.length ? b.issues.map(([d, t]) => `${d}: ${t}`).join(" · ") : "No problems found.";
+    showDetail(card, b.bill, model.tx.filter((r) => r.label === b.label && r.flow < 0), note);
+  }));
+  view.append(card, el(`<p></p>`));
+}
+
 function watchView(rows, prev, p) {
+  billsCard();
   const items = M.watch(model, rows, prev, p);
   view.append(el(`<h2>Things to look at</h2><p class="note">Spending that can't be seen, has no payee, is new, or is up on the period before.</p>`));
   if (!items.length) { view.append(el(`<p class="note">Nothing stands out in this period.</p>`)); return; }
