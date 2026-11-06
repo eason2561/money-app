@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private wiki repo,
 // written by ./money --publish (rebuilt by the wiki's "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-3";
-import * as M from "./model.js?v=2026.11.06-3";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-3";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-4";
+import * as M from "./model.js?v=2026.11.06-4";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-4";
 
-export const APP_VERSION = "2026.11.06-3";
+export const APP_VERSION = "2026.11.06-4";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -444,7 +444,7 @@ function balancesView(rows, prev, p) {
   };
   view.append(el(`<h2>Balances on ${fmtDate(end)}</h2>
     <div class="kpis">${kpi("Cash (checking and savings)", "Cash", true)}${kpi("Investments", "Investments", true)}${kpi("Owed (cards and loans)", "Owed", false, true)}${kpi("Net worth", "", true)}</div>
-    <p class="note">Change is against ${fmtDate(start)}, the day before the period starts. Checking, savings and card balances marked "estimated" are worked back from the transactions; investments and loans show the balance SimpleFIN last reported on or before the date (recorded daily from 2026-11-06).${Object.entries(model.estimates || {}).filter(([id]) => ids.includes(id)).map(([id, e]) => ` ${esc(name(id))} is an estimate: the balance on ${esc(e.source)} (${fmtDate(e.basis)}), less the repayments since, with interest.`).join("")}</p>`));
+    <p class="note">Change is against ${fmtDate(start)}, the day before the period starts. Checking, savings and card balances marked "estimated" are worked back from the transactions; investments and loans show the balance SimpleFIN last reported on or before the date (recorded daily from 2026-11-06).${Object.entries(model.estimates || {}).filter(([id]) => ids.includes(id)).map(([id, e]) => ` ${esc(name(id))} is an estimate: the balance on ${fmtDate(e.basis)} from ${esc(e.source)}, less the repayments since, with interest.`).join("")}</p>`));
 
   // Chart: one line, all cash or a chosen account.
   const pick = state.balPick && (state.balPick === "cash" || ids.includes(state.balPick)) ? state.balPick : "cash";
@@ -469,7 +469,7 @@ function balancesView(rows, prev, p) {
     return `<tr><th colspan="3">${k}</th></tr>` + list.map((a) => {
       const ch = a.now && a.was ? a.now.v - a.was.v : null;
       const e = model.estimates?.[a.id];
-      const asOf = !a.now ? "not known" : e ? `estimate from<br>${e.basis.slice(5).replace("-", "/")}/${e.basis.slice(2, 4)} statement`
+      const asOf = !a.now ? "not known" : e ? `estimate from<br>${e.basis.slice(5).replace("-", "/")}/${e.basis.slice(2, 4)} balance`
         : a.now.est ? "estimated" : a.now.asOf === end ? "reported" : `as of ${a.now.asOf.slice(5).replace("-", "/")}`;
       const chs = ch === null ? "–" : `${ch >= 0 ? "+" : "−"}$${Math.round(Math.abs(ch)).toLocaleString()}`;
       return `<tr class="click" data-acct="${esc(a.id)}"><td><b>${esc(name(a.id))}</b><br><span class="note">${esc(model.accounts[a.id].institution || "")}</span></td><td class="n">${a.now ? usd(a.now.v) : "–"}<br><span class="est">${asOf}</span></td><td class="n ${ch === null || Math.abs(ch) < 1 ? "" : ch < 0 ? "neg" : "pos"}">${chs}</td></tr>`;
