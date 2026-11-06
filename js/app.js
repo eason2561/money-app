@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private wiki repo,
 // written by ./money --publish (rebuilt by the wiki's "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-5";
-import * as M from "./model.js?v=2026.11.06-5";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-5";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-6";
+import * as M from "./model.js?v=2026.11.06-6";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-6";
 
-export const APP_VERSION = "2026.11.06-5";
+export const APP_VERSION = "2026.11.06-6";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -361,6 +361,15 @@ async function recategorise(r, group, allFromPayee) {
   render();
 }
 
+// A matched receipt: [date, payee, total, source, link, items].
+function receiptTag(r) {
+  if (!r.receipt) return "";
+  const [d, payee, total, source, link, items] = r.receipt;
+  const tip = `${payee}, ${d}: ${money(total)}${items ? ` (${items})` : ""}. ${source}`;
+  const label = `receipt${Math.abs(Math.abs(r.flow) - Math.abs(total)) > 0.005 ? ` ${money(total)}` : ""}`;
+  return ` <a class="tag verified" title="${esc(tip)}" href="${esc(link)}" target="_blank" rel="noopener">${esc(label)}</a>${items ? `<br><span class="note">${esc(items)}</span>` : ""}`;
+}
+
 function txTable(list, showCheck = false) {
   const sorted = [...list].sort((a, b) => (a.date < b.date ? 1 : -1));
   const total = list.reduce((a, r) => a + r.flow, 0);
@@ -373,7 +382,7 @@ function txTable(list, showCheck = false) {
     return `<select class="regroup" data-key="${esc(r.key)}" aria-label="Group">${opts.map((g) => `<option ${g === r.group ? "selected" : ""}>${esc(g)}</option>`).join("")}<option value="__new">New group…</option></select>`;
   };
   const box = el(`<div class="card"><p class="note">${list.length} transactions, net ${money(total)}${list.length > 500 ? " (newest 500 shown)" : ""}. Change a group with its dropdown.</p><table><tr><th>Date</th><th>Account</th><th>Payee</th><th>Group</th>${showCheck ? "<th>Check</th>" : ""}<th class="n">Amount</th></tr>
-    ${shown.map((r) => `<tr><td>${r.date}</td><td>${esc(name(r.account))}</td><td>${esc(r.label)}<br><span class="note">${esc(r.desc)}</span></td><td>${groupCell(r)}</td>${showCheck ? `<td><span class="tag ${r.check}">${esc(r.check || "")}</span></td>` : ""}<td class="n ${r.flow < 0 ? "" : "pos"}">${money(r.flow)}</td></tr>`).join("")}</table></div>`);
+    ${shown.map((r) => `<tr><td>${r.date}</td><td>${esc(name(r.account))}</td><td>${esc(r.label)}<br><span class="note">${esc(r.desc)}</span>${receiptTag(r)}</td><td>${groupCell(r)}</td>${showCheck ? `<td><span class="tag ${r.check}">${esc(r.check || "")}</span></td>` : ""}<td class="n ${r.flow < 0 ? "" : "pos"}">${money(r.flow)}</td></tr>`).join("")}</table></div>`);
   box.addEventListener("change", (ev) => {
     const sel = ev.target.closest("select.regroup"); if (!sel) return;
     const r = byKey.get(sel.dataset.key); if (!r) return;
@@ -395,15 +404,17 @@ function txView(rows) {
   view.append(el(`<div class="filters"><input id="q" type="search" placeholder="Search payee or description" value="${esc(f.q || "")}">
     <select id="fa"><option value="">All accounts</option>${accts.map((a) => `<option value="${esc(a)}" ${f.account === a ? "selected" : ""}>${esc(name(a))}</option>`).join("")}</select>
     <select id="fk"><option value="">All kinds</option>${kinds.map((k) => `<option ${f.kind === k ? "selected" : ""}>${esc(k)}</option>`).join("")}</select>
-    <select id="fg"><option value="">All groups</option>${grps.map((g) => `<option ${f.group === g ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></div><div id="txl"></div>`));
+    <select id="fg"><option value="">All groups</option>${grps.map((g) => `<option ${f.group === g ? "selected" : ""}>${esc(g)}</option>`).join("")}</select>
+    <select id="fr"><option value="">Receipt or not</option><option value="yes" ${f.receipt === "yes" ? "selected" : ""}>With a receipt</option><option value="no" ${f.receipt === "no" ? "selected" : ""}>Spending without a receipt</option></select></div><div id="txl"></div>`));
   const apply = () => {
-    state.tx = { q: $("#q").value, account: $("#fa").value, kind: $("#fk").value, group: $("#fg").value }; saveState();
+    state.tx = { q: $("#q").value, account: $("#fa").value, kind: $("#fk").value, group: $("#fg").value, receipt: $("#fr").value }; saveState();
     const q = state.tx.q.toLowerCase();
     const list = rows.filter((r) => (!state.tx.account || r.account === state.tx.account) && (!state.tx.kind || r.kind === state.tx.kind)
-      && (!state.tx.group || r.group === state.tx.group) && (!q || `${r.label} ${r.desc}`.toLowerCase().includes(q)));
+      && (!state.tx.group || r.group === state.tx.group) && (!q || `${r.label} ${r.desc}`.toLowerCase().includes(q))
+      && (!state.tx.receipt || (state.tx.receipt === "yes" ? Boolean(r.receipt) : !r.receipt && r.flow < 0 && M.OUT_KINDS.has(r.kind))));
     $("#txl").replaceChildren(txTable(list));
   };
-  ["q", "fa", "fk", "fg"].forEach((id) => $(`#${id}`).addEventListener(id === "q" ? "input" : "change", apply));
+  ["q", "fa", "fk", "fg", "fr"].forEach((id) => $(`#${id}`).addEventListener(id === "q" ? "input" : "change", apply));
   apply();
 }
 
