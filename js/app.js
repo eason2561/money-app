@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private wiki repo,
 // written by ./money --publish (rebuilt by the wiki's "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-7";
-import * as M from "./model.js?v=2026.11.06-7";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-7";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-8";
+import * as M from "./model.js?v=2026.11.06-8";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-8";
 
-export const APP_VERSION = "2026.11.06-7";
+export const APP_VERSION = "2026.11.06-8";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -263,6 +263,41 @@ function groups(rows, prev) {
   const c = el(`<div class="card"></div>`).firstChild;
   c.append(hbars([...now].sort((a, b) => a[1] - b[1]).map(([g, v]) => ({ label: g, v: -v, prev: -(before.get(g) || 0), cls: leak.has(g) ? "leak" : "" })), { onPick: (g) => { drill = { group: g, label: null }; render(); } }));
   view.append(c);
+  perChildCard(rows);
+}
+
+// Kids' activities and schooling per child (meta/money/activities.csv); shared costs split evenly.
+function perChildCard(rows) {
+  const acts = (model.activities || []).map(([pat, kids, act]) => [new RegExp(pat, "i"), kids, act]);
+  if (!acts.length) return;
+  const per = new Map(); // kid -> Map(activity -> {v, rows})
+  for (const r of rows) {
+    if (r.kind !== "spend") continue;
+    const hit = acts.find(([re]) => re.test(r.label));
+    if (!hit) continue;
+    const [, kids, act] = hit;
+    for (const k of kids) {
+      const m = per.get(k) || per.set(k, new Map()).get(k);
+      const e = m.get(act) || m.set(act, { v: 0, rows: [] }).get(act);
+      e.v += -r.flow / kids.length; e.rows.push(r);
+    }
+  }
+  if (!per.size) return;
+  const kids = ["Lily", "Sam", "Luke"].filter((k) => per.has(k));
+  const lines = [];
+  for (const k of kids) {
+    const acts2 = [...per.get(k)].sort((a, b) => b[1].v - a[1].v);
+    lines.push({ head: true, k, v: acts2.reduce((a, [, e]) => a + e.v, 0) });
+    for (const [act, e] of acts2) lines.push({ k, act, v: e.v, rows: e.rows });
+  }
+  const card = el(`<div class="card"><table><tr><th>Per child<br><span class="note">Activities and schooling in this period; a shared cost (swim, trainer, co-op) is split evenly. Tap a row for its transactions.</span></th><th class="n">Spent</th></tr>
+    ${lines.map((x, i) => x.head ? `<tr><td><b>${esc(x.k)}</b></td><td class="n"><b>${money(x.v)}</b></td></tr>`
+      : `<tr class="click" data-i="${i}"><td>${esc(x.act)}</td><td class="n">${money(x.v)}</td></tr>`).join("")}</table></div>`).firstChild;
+  card.querySelectorAll("tr[data-i]").forEach((tr) => tr.addEventListener("click", () => {
+    const x = lines[Number(tr.dataset.i)];
+    showDetail(card, `${x.k}: ${x.act}`, x.rows, "Full amounts shown; the per-child figure is this child's share.");
+  }));
+  view.append(el(`<h2>Per child</h2>`), card);
 }
 
 function trendView(rows, prev, p) {
