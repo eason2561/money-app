@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private wiki repo,
 // written by ./money --publish (rebuilt by the wiki's "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-4";
-import * as M from "./model.js?v=2026.11.06-4";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-4";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-5";
+import * as M from "./model.js?v=2026.11.06-5";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-5";
 
-export const APP_VERSION = "2026.11.06-4";
+export const APP_VERSION = "2026.11.06-5";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -308,9 +308,17 @@ function watchView(rows, prev, p) {
   const items = M.watch(model, rows, prev, p);
   view.append(el(`<h2>Things to look at</h2><p class="note">Spending that can't be seen, has no payee, is new, or is up on the period before.</p>`));
   if (!items.length) { view.append(el(`<p class="note">Nothing stands out in this period.</p>`)); return; }
+  view.append(el(`<p class="note">Tap a row to see its transactions.</p>`));
   for (const it of items) {
-    view.append(el(`<div class="card"><table><tr><th>${esc(it.title)}<br><span class="note">${esc(it.why)}</span></th><th class="n">${money(it.v)}</th></tr>
-      ${it.top.map((x) => `<tr><td>${esc(x.label)}</td><td class="n">${money(x.v)}</td></tr>`).join("")}</table></div><p></p>`));
+    const card = el(`<div class="card"><table><tr><th>${esc(it.title)}<br><span class="note">${esc(it.why)}</span></th><th class="n">${money(it.v)}</th></tr>
+      ${it.top.map((x, i) => `<tr class="click" data-i="${i}"><td>${esc(x.label)}</td><td class="n">${money(x.v)}</td></tr>`).join("")}</table>
+      <p class="note"><a href="#" class="all">Show all ${it.rows.length} transaction${it.rows.length === 1 ? "" : "s"}</a></p></div>`).firstChild;
+    card.querySelectorAll("tr[data-i]").forEach((tr) => tr.addEventListener("click", () => {
+      const x = it.top[Number(tr.dataset.i)];
+      showDetail(card, x.label, x.rows);
+    }));
+    card.querySelector(".all").addEventListener("click", (e) => { e.preventDefault(); showDetail(card, it.title, it.rows); });
+    view.append(card, el(`<p></p>`));
   }
 }
 

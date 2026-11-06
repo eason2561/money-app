@@ -146,29 +146,29 @@ export function watch(model, rows, prevRows, p) {
   const sum = (rs) => -rs.reduce((a, t) => a + t.flow, 0);
   const list = (rs, n = 6) => {
     const m = sumBy(rs, (t) => t.label);
-    return [...m].sort((a, b) => a[1] - b[1]).slice(0, n).map(([l, v]) => ({ label: l, v: -v }));
+    return [...m].sort((a, b) => a[1] - b[1]).slice(0, n).map(([l, v]) => ({ label: l, v: -v, rows: rs.filter((t) => t.label === l) }));
   };
   const pick = (f) => rows.filter(f);
   const oc = pick((t) => t.kind === "other card");
-  if (oc.length) items.push({ title: "Card purchases with no detail", v: sum(oc), why: "Paid to a card whose purchases aren't exported for these dates (mostly the Amazon card).", top: list(oc) });
+  if (oc.length) items.push({ title: "Card purchases with no detail", v: sum(oc), rows: oc, why: "Paid to a card whose purchases aren't exported for these dates (mostly the Amazon card).", top: list(oc) });
   const uns = pick((t) => t.group === "Unsorted");
-  if (uns.length) items.push({ title: "Not yet sorted", v: sum(uns), why: "Payees with no rule yet; a rule in meta/money/rules.csv sorts them.", top: list(uns) });
+  if (uns.length) items.push({ title: "Not yet sorted", v: sum(uns), rows: uns, why: "Payees with no rule yet; a rule in meta/money/rules.csv sorts them.", top: list(uns) });
   const ppl = pick((t) => t.group === "People & payments");
-  if (ppl.length) items.push({ title: "Venmo, Zelle and PayPal", v: sum(ppl), why: "Payments to people; no detail of what for.", top: list(ppl) });
+  if (ppl.length) items.push({ title: "Venmo, Zelle and PayPal", v: sum(ppl), rows: ppl, why: "Payments to people; no detail of what for.", top: list(ppl) });
   const cash = pick((t) => t.group === "Cash" || t.group === "Checks");
-  if (cash.length) items.push({ title: "Cash and checks", v: sum(cash), why: "Money that leaves without a payee.", top: list(cash) });
+  if (cash.length) items.push({ title: "Cash and checks", v: sum(cash), rows: cash, why: "Money that leaves without a payee.", top: list(cash) });
   const subs = pick((t) => t.kind === "spend" && t.flow < 0 && SUBS.test(`${t.label} ${t.desc}`));
-  if (subs.length) items.push({ title: "Subscriptions, games and apps", v: sum(subs), why: "Small repeating charges add up.", top: list(subs, 10) });
+  if (subs.length) items.push({ title: "Subscriptions, games and apps", v: sum(subs), rows: subs, why: "Small repeating charges add up.", top: list(subs, 10) });
   const fresh = history ? pick((t) => OUT_KINDS.has(t.kind) && t.flow < 0 && model.seen[t.label]?.first >= p.from) : [];
-  if (fresh.length) items.push({ title: "New payees this period", v: sum(fresh), why: "First time these appear in the data.", top: list(fresh, 10) });
+  if (fresh.length) items.push({ title: "New payees this period", v: sum(fresh), rows: fresh, why: "First time these appear in the data.", top: list(fresh, 10) });
   const big = pick((t) => t.kind === "spend" && t.flow <= -300 && (model.seen[t.label]?.months.size || 0) <= 2);
-  if (big.length) items.push({ title: "Large one-off purchases", v: sum(big), why: "$300 or more to a payee seen in two months or fewer.", top: big.sort((a, b) => a.flow - b.flow).slice(0, 10).map((t) => ({ label: `${t.date} ${t.label}`, v: -t.flow })) });
+  if (big.length) items.push({ title: "Large one-off purchases", v: sum(big), rows: big, why: "$300 or more to a payee seen in two months or fewer.", top: big.sort((a, b) => a.flow - b.flow).slice(0, 10).map((t) => ({ label: `${t.date} ${t.label}`, v: -t.flow, rows: [t] })) });
   if (history && prevRows.length && M_prevCovered(model, p)) {
     const now = sumBy(rows, (t) => t.group, (t) => t.kind === "spend");
     const before = sumBy(prevRows, (t) => t.group, (t) => t.kind === "spend");
     const up = [...now].map(([g, v]) => ({ label: g, v: -v, prev: -(before.get(g) || 0) }))
       .filter((x) => x.v - x.prev > 100 && x.v > x.prev * 1.25).sort((a, b) => (b.v - b.prev) - (a.v - a.prev));
-    if (up.length) items.push({ title: "Up on the period before", v: up.reduce((a, x) => a + x.v - x.prev, 0), why: "Groups more than 25% and $100 above the same length of time before.", top: up.slice(0, 8).map((x) => ({ label: `${x.label} (was ${Math.round(x.prev).toLocaleString()})`, v: x.v - x.prev })) });
+    if (up.length) items.push({ title: "Up on the period before", v: up.reduce((a, x) => a + x.v - x.prev, 0), why: "Groups more than 25% and $100 above the same length of time before.", rows: rows.filter((t) => t.kind === "spend" && up.some((x) => x.label === t.group)), top: up.slice(0, 8).map((x) => ({ label: `${x.label} (was ${Math.round(x.prev).toLocaleString()})`, v: x.v - x.prev, rows: rows.filter((t) => t.kind === "spend" && t.group === x.label) })) });
   }
   return items.sort((a, b) => b.v - a.v);
 }
