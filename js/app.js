@@ -4,7 +4,7 @@ import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFA
 import * as M from "./model.js?v=2026.11.05-7";
 import { sankey, bars, hbars, money, esc } from "./charts.js?v=2026.11.05-7";
 
-export const APP_VERSION = "2026.11.05-7";
+export const APP_VERSION = "2026.11.06-1";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -467,5 +467,14 @@ async function load(force = false) {
 }
 
 window.addEventListener("hashchange", render);
+// A tab link to the page already shown fires no hashchange (e.g. Spending while drilled into a
+// group), so reset that page here.
+document.addEventListener("click", (e) => {
+  const a = e.target.closest('a[href^="#/"]');
+  if (!a || e.defaultPrevented || a.getAttribute("href") !== location.hash) return;
+  e.preventDefault();
+  drill = { group: null, label: null };
+  render();
+});
 $("#refresh").addEventListener("click", () => load(true));
 load();
