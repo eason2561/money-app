@@ -125,3 +125,29 @@ export function hbars(rows, { width = 960, onPick } = {}) {
   p.push("</svg>");
   return wrap(p.join(""), onPick);
 }
+
+// Line over time: points [{d: "YYYY-MM-DD", v}] (v may be null for a gap).
+export function line(points, { width = 960, height = 220, label = "Balance" } = {}) {
+  const padL = 60, padB = 24, padT = 10, padR = 10;
+  const vs = points.filter((q) => q.v !== null).map((q) => q.v);
+  if (!vs.length) return wrap(`<p class="note">No balance known for this period.</p>`);
+  let lo = Math.min(...vs), hi = Math.max(...vs);
+  if (hi - lo < 1) { lo -= 50; hi += 50; }
+  const padV = (hi - lo) * 0.08; lo -= padV; hi += padV;
+  const n = Math.max(points.length - 1, 1);
+  const x = (i) => padL + (i / n) * (width - padL - padR);
+  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (height - padB - padT);
+  const p = [`<svg viewBox="0 0 ${width} ${height}" class="chart line" role="img" aria-label="${esc(label)} over time">`];
+  for (const f of [0, 0.5, 1]) { const v = lo + (hi - lo) * f; p.push(`<line class="grid" x1="${padL}" x2="${width - padR}" y1="${y(v)}" y2="${y(v)}"/><text class="tick" x="${padL - 6}" y="${y(v) + 4}" text-anchor="end">${money(v)}</text>`); }
+  if (lo < 0 && hi > 0) p.push(`<line class="zero" x1="${padL}" x2="${width - padR}" y1="${y(0)}" y2="${y(0)}"/>`);
+  let d = "", started = false;
+  points.forEach((q, i) => { if (q.v === null) { started = false; return; } d += `${started ? "L" : "M"}${x(i).toFixed(1)},${y(q.v).toFixed(1)}`; started = true; });
+  p.push(`<path class="ln" d="${d}"/>`);
+  const every = Math.max(1, Math.ceil(points.length / 8));
+  points.forEach((q, i) => {
+    if (i % every === 0 || i === points.length - 1) p.push(`<text class="tick" x="${x(i)}" y="${height - 6}" text-anchor="${i === points.length - 1 ? "end" : i === 0 ? "start" : "middle"}">${q.d.slice(5)}</text>`);
+    if (q.v !== null) p.push(`<circle class="pt" cx="${x(i)}" cy="${y(q.v)}" r="6"><title>${q.d}: ${money(q.v)}</title></circle>`);
+  });
+  p.push("</svg>");
+  return wrap(p.join(""));
+}

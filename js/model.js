@@ -174,3 +174,49 @@ export function watch(model, rows, prevRows, p) {
 }
 
 function M_prevCovered(model, p) { return previous(p).from >= model.from; }
+
+// ---- balances ----
+// SimpleFIN snapshots (model.balances: {account: [[date, balance], ...]}, debts negative). For
+// checking, savings and cards, a balance on any date is worked back from the latest snapshot with
+// the transactions in between (est: true); other accounts show their last snapshot on or before it.
+export const REBUILD_TYPES = new Set(["checking", "savings", "credit"]);
+export const BALANCE_CLASS = { checking: "Cash", savings: "Cash", investment: "Investments", credit: "Owed", loan: "Owed" };
+function balanceIndex(model) {
+  if (model._bal) return model._bal;
+  const idx = {};
+  for (const [id, snaps] of Object.entries(model.balances || {})) {
+    const a = model.accounts[id];
+    if (!a || !snaps.length) continue;
+    const e = { snaps, rebuild: REBUILD_TYPES.has(a.type) && a.exported, dates: [], cum: [] };
+    if (e.rebuild) {
+      const byDate = new Map();
+      for (const t of model.tx) if (t.account === id) byDate.set(t.date, (byDate.get(t.date) || 0) + t.flow);
+      let c = 0;
+      for (const d of [...byDate.keys()].sort()) { c += byDate.get(d); e.dates.push(d); e.cum.push(c); }
+    }
+    idx[id] = e;
+  }
+  return (model._bal = idx);
+}
+const cumAt = (e, d) => { // sum of flows on or before d
+  let lo = 0, hi = e.dates.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (e.dates[m] <= d) lo = m + 1; else hi = m; }
+  return lo ? e.cum[lo - 1] : 0;
+};
+// {v, asOf, est} or null when unknown on that date.
+export function balanceAt(model, id, d) {
+  const e = balanceIndex(model)[id];
+  if (!e) return null;
+  if (e.rebuild) {
+    const a = model.accounts[id];
+    if (a.from && d < addDays(a.from, -1)) return null;
+    const [sd, sv] = e.snaps[e.snaps.length - 1];
+    const exact = e.snaps.find((s) => s[0] === d);
+    if (exact) return { v: exact[1], asOf: d, est: false };
+    return { v: sv + cumAt(e, d) - cumAt(e, sd), asOf: d, est: true };
+  }
+  let hit = null;
+  for (const s of e.snaps) if (s[0] <= d) hit = s;
+  return hit ? { v: hit[1], asOf: hit[0], est: false } : null;
+}
+export const balanceIds = (model) => Object.keys(balanceIndex(model));

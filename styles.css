@@ -86,3 +86,8 @@ svg .band.pickable { cursor: pointer; }
 .detail h3 { font-size: 15px; margin: 6px 0; display: flex; justify-content: space-between; gap: 8px; }
 .detail .close { font-weight: 400; font-size: 13px; }
 select.regroup { font: inherit; font-size: 13px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); max-width: 190px; }
+svg .ln { fill: none; stroke: var(--accent); stroke-width: 2; }
+svg .pt { fill: transparent; }
+svg .pt:hover { fill: var(--accent); }
+svg .zero { stroke: var(--muted); stroke-dasharray: 3 3; }
+.est { color: var(--muted); font-size: 12px; }

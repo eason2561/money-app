@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private wiki repo,
 // written by ./money --publish (rebuilt by the wiki's "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.05-7";
-import * as M from "./model.js?v=2026.11.05-7";
-import { sankey, bars, hbars, money, esc } from "./charts.js?v=2026.11.05-7";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-2";
+import * as M from "./model.js?v=2026.11.06-2";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-2";
 
-export const APP_VERSION = "2026.11.06-1";
+export const APP_VERSION = "2026.11.06-2";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -425,7 +425,61 @@ function settings() {
 }
 
 // ---------- routing ----------
-const VIEWS = { overview, accounts, groups, trend: trendView, loop, watch: watchView, tx: txView, settings };
+// ---------- balances ----------
+const usd = (v) => `${v < 0 ? "−" : ""}$${Math.round(Math.abs(v)).toLocaleString()}`;
+function balancesView(rows, prev, p) {
+  const ids = M.balanceIds(model);
+  if (!ids.length) { view.append(el(`<div class="msg">No balances yet. They arrive with the next SimpleFIN sync (daily).</div>`)); return; }
+  const start = M.addDays(p.from, -1), end = p.to < model.to ? p.to : model.to; // never past the data
+  const cls = (id) => M.BALANCE_CLASS[model.accounts[id].type] || "Other";
+  const info = ids.map((id) => ({ id, cls: cls(id), now: M.balanceAt(model, id, end), was: M.balanceAt(model, id, start) }));
+  const order = ["Cash", "Investments", "Owed", "Other"];
+  const tot = (c) => info.filter((a) => (!c || a.cls === c) && a.now).reduce((s, a) => s + a.now.v, 0);
+  // Change counts only accounts known on both dates.
+  const chg = (c) => info.filter((a) => (!c || a.cls === c) && a.now && a.was).reduce((s, a) => s + a.now.v - a.was.v, 0);
+  const known = (c) => info.some((a) => (!c || a.cls === c) && a.now && a.was);
+  const kpi = (label, c, goodUp, flip = false) => {
+    const v = flip ? -tot(c) : tot(c), d = flip ? -chg(c) : chg(c);
+    return `<div class="kpi"><span>${label}</span><b>${usd(v)}</b>${known(c) ? `<span class="d ${Math.abs(d) < 1 ? "" : (d > 0) === goodUp ? "pos" : "neg"}">${d >= 0 ? "+" : "−"}${usd(Math.abs(d))} in period</span>` : `<span class="d">change not known yet</span>`}</div>`;
+  };
+  view.append(el(`<h2>Balances on ${fmtDate(end)}</h2>
+    <div class="kpis">${kpi("Cash (checking and savings)", "Cash", true)}${kpi("Investments", "Investments", true)}${kpi("Owed (cards and loans)", "Owed", false, true)}${kpi("Net worth", "", true)}</div>
+    <p class="note">Change is against ${fmtDate(start)}, the day before the period starts. Checking, savings and card balances marked "estimated" are worked back from the transactions; investments and loans show the balance SimpleFIN last reported on or before the date (recorded daily from 2026-11-06).</p>`));
+
+  // Chart: one line, all cash or a chosen account.
+  const pick = state.balPick && (state.balPick === "cash" || ids.includes(state.balPick)) ? state.balPick : "cash";
+  const opts = [["cash", "All cash (checking and savings)"], ...ids.map((id) => [id, name(id)])];
+  view.append(el(`<div class="filters"><label>Show <select id="bp">${opts.map(([k, l]) => `<option value="${esc(k)}" ${pick === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label></div>`));
+  $("#bp").addEventListener("change", (e) => { state.balPick = e.target.value; saveState(); render(); });
+  const at = (d) => {
+    if (pick !== "cash") { const x = M.balanceAt(model, pick, d); return x ? x.v : null; }
+    const xs = info.filter((a) => a.cls === "Cash").map((a) => M.balanceAt(model, a.id, d));
+    return xs.some((x) => x) ? xs.reduce((s, x) => s + (x ? x.v : 0), 0) : null;
+  };
+  const n = M.days(start, end), step = Math.max(1, Math.ceil(n / 370)), pts = [];
+  for (let i = 0; i < n; i += step) { const d = M.addDays(start, i); pts.push({ d, v: at(d) }); }
+  if (pts[pts.length - 1].d !== end) pts.push({ d: end, v: at(end) });
+  const c = el(`<div class="card"></div>`).firstChild;
+  c.append(line(pts, { label: pick === "cash" ? "Cash" : name(pick) }));
+  view.append(c);
+
+  // Table by class.
+  const body = order.filter((k) => info.some((a) => a.cls === k)).map((k) => {
+    const list = info.filter((a) => a.cls === k).sort((a, b) => Math.abs(b.now?.v || 0) - Math.abs(a.now?.v || 0));
+    return `<tr><th colspan="3">${k}</th></tr>` + list.map((a) => {
+      const ch = a.now && a.was ? a.now.v - a.was.v : null;
+      const asOf = !a.now ? "not known" : a.now.est ? "estimated" : a.now.asOf === end ? "reported" : `as of ${a.now.asOf.slice(5).replace("-", "/")}`;
+      const chs = ch === null ? "–" : `${ch >= 0 ? "+" : "−"}$${Math.round(Math.abs(ch)).toLocaleString()}`;
+      return `<tr class="click" data-acct="${esc(a.id)}"><td><b>${esc(name(a.id))}</b><br><span class="note">${esc(model.accounts[a.id].institution || "")}</span></td><td class="n">${a.now ? usd(a.now.v) : "–"}<br><span class="est">${asOf}</span></td><td class="n ${ch === null || Math.abs(ch) < 1 ? "" : ch < 0 ? "neg" : "pos"}">${chs}</td></tr>`;
+    }).join("");
+  }).join("");
+  view.append(el(`<h2>Each account</h2><div class="card"><table><tr><th>Account</th><th class="n">Balance</th><th class="n">Change</th></tr>${body}</table></div>`));
+  view.querySelectorAll("[data-acct]").forEach((tr) => tr.addEventListener("click", () => { state.tx = { account: tr.dataset.acct }; saveState(); location.hash = "#/tx"; }));
+  const missing = Object.values(model.accounts).filter((a) => !ids.includes(a.id) && a.to && a.to >= M.addDays(model.to, -60));
+  if (missing.length) view.append(el(`<p class="note">No balance from SimpleFIN for: ${missing.map((a) => esc(name(a.id))).join(", ")}.</p>`));
+}
+
+const VIEWS = { overview, balances: balancesView, accounts, groups, trend: trendView, loop, watch: watchView, tx: txView, settings };
 function render() {
   const route = (location.hash.replace(/^#\//, "") || "overview").split("?")[0];
   const v = VIEWS[route] ? route : "overview";
