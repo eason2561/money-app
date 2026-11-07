@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private Money repo,
 // written by ./money --publish (rebuilt by its "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.07-3";
-import * as M from "./model.js?v=2026.11.07-3";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.07-3";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.07-4";
+import * as M from "./model.js?v=2026.11.07-4";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.07-4";
 
-export const APP_VERSION = "2026.11.07-3";
+export const APP_VERSION = "2026.11.07-4";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -462,8 +462,9 @@ function receiptTag(r) {
 
 function originalLabel(link) {
   if (/mail\.google\.com/.test(link)) return "Open the email";
+  if (/photos\.google\.com\/share\/[^/]+\/photo\//.test(link)) return "Open the photo";
   if (/photos\.app\.goo\.gl|photos\.google\.com/.test(link)) return "Open the photo album";
-  if (/grocery-prices\/receipts\.csv/.test(link)) return "All grocery receipts (Family repo)";
+  if (/drive\.google\.com|docs\.google\.com/.test(link)) return "Open in Google Drive";
   if (/\.pdf$/i.test(link)) return "Open the PDF";
   if (/\.(jpe?g|png)$/i.test(link)) return "Open the picture";
   return "Open the original";
@@ -493,7 +494,8 @@ function showReceipt(r) {
       <dt>Charged</dt><dd>${cents(charged)} on ${fmtDate(r.date)}, ${esc(name(r.account))}${differs ? ` <span class="note">(differs from the receipt by ${cents(charged - Math.abs(total))})</span>` : ""}</dd>
       <dt>Source</dt><dd>${esc(source)}</dd>
     </dl>
-    <div class="receipt-foot">${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">${esc(originalLabel(link))}</a>` : "<span></span>"}
+    <div class="receipt-foot">${link && !/github\.com/.test(link) ? `<a href="${esc(link)}" target="_blank" rel="noopener">${esc(originalLabel(link))}</a>`
+      : `<span class="note">The original isn't saved in Google Photos or Drive.</span>`}
       <button type="button" class="btn primary receipt-close">Close</button></div>`;
   document.body.append(dlg);
   const close = () => { dlg.close(); dlg.remove(); };
