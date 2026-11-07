@@ -1,14 +1,18 @@
-// Reads the money model from the private wiki repo. This page only talks to
+// Reads the money model from the private Money repo. This page only talks to
 // api.github.com, with the read-only token saved on this device in Settings.
 
 const API = "https://api.github.com";
 const KEY = "money:settings";
 const CACHE = "money:model";
 
-export const DEFAULTS = { owner: "eason2561", repo: "Wiki", branch: "main", path: "assets/financial/money/model.json", token: "" };
+export const DEFAULTS = { owner: "eason2561", repo: "Money", branch: "main", path: "assets/financial/money/model.json", token: "" };
 
 export function loadSettings() {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; }
+  try {
+    const s = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || "{}") };
+    if (s.owner === "eason2561" && s.repo === "Wiki") s.repo = "Money";  // the data moved 2026-11-07
+    return s;
+  }
   catch { return { ...DEFAULTS }; }
 }
 export function saveSettings(s) {
