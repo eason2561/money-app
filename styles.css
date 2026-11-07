@@ -91,3 +91,18 @@ svg .pt { fill: transparent; }
 svg .pt:hover { fill: var(--accent); }
 svg .zero { stroke: var(--muted); stroke-dasharray: 3 3; }
 .est { color: var(--muted); font-size: 12px; }
+button.tag { font: inherit; font-size: 12px; background: none; cursor: pointer; }
+dialog.receipt { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--card); color: var(--ink); }
+dialog.receipt::backdrop { background: rgb(0 0 0 / 0.45); }
+.receipt-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 8px; }
+.receipt-head h3 { margin: 0; font-size: 18px; outline: none; }
+.receipt-total { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.receipt-lines { width: 100%; border-collapse: collapse; font-size: 14px; }
+.receipt-lines td, .receipt-lines th { padding: 5px 4px; }
+.receipt-lines .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.receipt-items { font-size: 15px; line-height: 1.5; margin: 8px 0; }
+.receipt-meta { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 12px 0; font-size: 14px; }
+.receipt-meta dt { color: var(--muted); }
+.receipt-meta dd { margin: 0; overflow-wrap: anywhere; }
+.receipt-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }

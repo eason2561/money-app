@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private Money repo,
 // written by ./money --publish (rebuilt by its "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.07-2";
-import * as M from "./model.js?v=2026.11.07-2";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.07-2";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.07-3";
+import * as M from "./model.js?v=2026.11.07-3";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.07-3";
 
-export const APP_VERSION = "2026.11.07-2";
+export const APP_VERSION = "2026.11.07-3";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -449,14 +449,71 @@ async function recategorise(r, group, allFromPayee) {
   render();
 }
 
-// A matched receipt: [date, payee, total, source, link, items].
+// A matched receipt: [date, payee, total, source, link, items, lines]. The tag opens a readable
+// receipt card (showReceipt); the original (photo, email, PDF, CSV) is one link inside it.
+const receiptRows = new Map();
 function receiptTag(r) {
   if (!r.receipt) return "";
-  const [d, payee, total, source, link, items] = r.receipt;
-  const tip = `${payee}, ${d}: ${money(total)}${items ? ` (${items})` : ""}. ${source}`;
+  const [, , total, , , items] = r.receipt;
+  receiptRows.set(r.key, r);
   const label = `receipt${Math.abs(Math.abs(r.flow) - Math.abs(total)) > 0.005 ? ` ${money(total)}` : ""}`;
-  return ` <a class="tag verified" title="${esc(tip)}" href="${esc(link)}" target="_blank" rel="noopener">${esc(label)}</a>${items ? `<br><span class="note">${esc(items)}</span>` : ""}`;
+  return ` <button type="button" class="tag verified receipt-open" data-key="${esc(r.key)}">${esc(label)}</button>${items ? `<br><span class="note">${esc(items)}</span>` : ""}`;
 }
+
+function originalLabel(link) {
+  if (/mail\.google\.com/.test(link)) return "Open the email";
+  if (/photos\.app\.goo\.gl|photos\.google\.com/.test(link)) return "Open the photo album";
+  if (/grocery-prices\/receipts\.csv/.test(link)) return "All grocery receipts (Family repo)";
+  if (/\.pdf$/i.test(link)) return "Open the PDF";
+  if (/\.(jpe?g|png)$/i.test(link)) return "Open the picture";
+  return "Open the original";
+}
+
+// Receipts show exact amounts, not the dashboard's rounded dollars.
+const cents = (v) => Math.abs(+v).toLocaleString(undefined, { style: "currency", currency: "USD" });
+
+function showReceipt(r) {
+  const [d, payee, total, source, link, items, lines = []] = r.receipt;
+  const charged = Math.abs(r.flow);
+  const differs = Math.abs(charged - Math.abs(total)) > 0.005;
+  const num = (v) => (v === "" || v == null || isNaN(+v) ? esc(v || "") : cents(v));
+  const qty = (l) => esc([l[1] && l[1] !== "1" ? l[1] : "", l[1] && l[1] !== "1" && l[2] && l[2] !== "each" ? l[2] : "", l[3] ? `(${l[3]})` : ""].filter(Boolean).join(" "));
+  const body = lines.length
+    ? `<table class="receipt-lines"><thead><tr><th>Item</th><th class="num">Price</th><th class="num">Total</th></tr></thead><tbody>
+        ${lines.map((l) => `<tr><td>${esc(l[0])}${qty(l) ? ` <span class="note">${qty(l)}</span>` : ""}</td><td class="num">${num(l[4])}</td><td class="num">${num(l[5])}</td></tr>`).join("")}
+       </tbody></table>`
+    : items ? `<p class="receipt-items">${esc(items)}</p>` : `<p class="note">No item list for this receipt.</p>`;
+  const dlg = document.createElement("dialog");
+  dlg.className = "receipt";
+  dlg.innerHTML = `
+    <div class="receipt-head"><div><h3 tabindex="-1">${esc(payee)}</h3><div class="note">${fmtDate(d)}</div></div>
+      <div class="receipt-total">${cents(total)}</div></div>
+    ${body}
+    <dl class="receipt-meta">
+      <dt>Charged</dt><dd>${cents(charged)} on ${fmtDate(r.date)}, ${esc(name(r.account))}${differs ? ` <span class="note">(differs from the receipt by ${cents(charged - Math.abs(total))})</span>` : ""}</dd>
+      <dt>Source</dt><dd>${esc(source)}</dd>
+    </dl>
+    <div class="receipt-foot">${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">${esc(originalLabel(link))}</a>` : "<span></span>"}
+      <button type="button" class="btn primary receipt-close">Close</button></div>`;
+  document.body.append(dlg);
+  const close = () => { dlg.close(); dlg.remove(); };
+  dlg.querySelector(".receipt-close").addEventListener("click", close);
+  dlg.addEventListener("click", (e) => { if (e.target === dlg) close(); });  // a tap on the backdrop
+  dlg.addEventListener("cancel", (e) => { e.preventDefault(); close(); });  // Esc / Android back
+  dlg.showModal();
+  dlg.querySelector("h3").focus({ preventScroll: true });  // not the link at the bottom, which would scroll there
+  dlg.scrollTop = 0;
+}
+
+// Capture phase, so the click opens the receipt instead of also reaching a clickable row.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".receipt-open");
+  if (!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const r = receiptRows.get(b.dataset.key);
+  if (r) showReceipt(r);
+}, true);
 
 function txTable(list, showCheck = false) {
   const sorted = [...list].sort((a, b) => (a.date < b.date ? 1 : -1));
