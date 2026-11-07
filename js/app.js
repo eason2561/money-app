@@ -1,10 +1,10 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private wiki repo,
 // written by ./money --publish (rebuilt by the wiki's "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.06-8";
-import * as M from "./model.js?v=2026.11.06-8";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.06-8";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.07-1";
+import * as M from "./model.js?v=2026.11.07-1";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.07-1";
 
-export const APP_VERSION = "2026.11.06-8";
+export const APP_VERSION = "2026.11.07-1";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -97,6 +97,40 @@ function showDetail(card, title, list, note = "") {
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
+// Budget buckets (meta/money/budget.csv): the same matching as meta/money.py bucket_of.
+const BUDGET_KINDS = new Set(["spend", "debt", "other card"]);
+function bucketOf(r, budget) {
+  if (r.kind === "income" && r.label.startsWith("FSAFEDS")) return "Everything else";
+  if (!BUDGET_KINDS.has(r.kind)) return null;
+  for (const b of budget) {
+    if (b.groups.includes("*") || b.groups.includes(r.group) || (b.labels && new RegExp(b.labels).test(r.label))) return b.bucket === "exclude" ? null : b.bucket;
+  }
+  return null;
+}
+function budgetCard(rows, p) {
+  const budget = model.budget || [];
+  if (!budget.length) return;
+  const months = M.days(p.from, p.to) / 30.44;
+  const spent = new Map(), list = new Map();
+  for (const r of rows) {
+    const b = bucketOf(r, budget);
+    if (!b) continue;
+    spent.set(b, (spent.get(b) || 0) - r.flow);
+    (list.get(b) || list.set(b, []).get(b)).push(r);
+  }
+  const buckets = budget.filter((b) => b.bucket !== "exclude");
+  const totT = buckets.reduce((a, b) => a + b.target, 0) * months, totS = [...spent.values()].reduce((a, v) => a + v, 0);
+  const card = el(`<div class="card"><table><tr><th>Budget<br><span class="note">Monthly targets scaled to this period (${months < 1.5 ? "one month" : `${months.toFixed(1)} months`}). Tap a bucket for its transactions.</span></th><th class="n">Spent</th><th class="n">Target</th></tr>
+    ${buckets.map((b, i) => { const v = spent.get(b.bucket) || 0, t = b.target * months;
+      return `<tr class="click" data-i="${i}"><td>${esc(b.bucket)}</td><td class="n ${v > t * 1.02 ? "neg" : ""}">${money(v)}</td><td class="n">${money(t)}</td></tr>`; }).join("")}
+    <tr><td><b>Total</b></td><td class="n ${totS > totT * 1.02 ? "neg" : ""}"><b>${money(totS)}</b></td><td class="n"><b>${money(totT)}</b></td></tr></table></div>`).firstChild;
+  card.querySelectorAll("tr[data-i]").forEach((tr) => tr.addEventListener("click", () => {
+    const b = buckets[Number(tr.dataset.i)];
+    showDetail(card, b.bucket, list.get(b.bucket) || []);
+  }));
+  view.append(card);
+}
+
 function overview(rows, prev, p) {
   const t = M.totals(model, rows);
   const b = M.previous(p).from >= model.from ? M.totals(model, prev) : {};
@@ -106,6 +140,7 @@ function overview(rows, prev, p) {
     <div class="kpi"><b>${money(t.saved)}</b><span>saved (incl. ${money(t.kept)} kept in savings)</span><br>${delta(t.saved, b.saved, true)}</div>
     <div class="kpi"><b class="${t.buffer < 0 ? "neg" : ""}">${money(t.buffer)}</b><span>change in checking and cards</span></div>
   </div>${payrollNote(t.payroll)}${coverageNote(p)}`));
+  budgetCard(rows, p);
   // Flow: income sources -> household -> uses
   const inc = M.sumBy(rows, (r) => r.label, (r) => r.kind === "income");
   const left = [...inc].sort((a, c) => c[1] - a[1]);
