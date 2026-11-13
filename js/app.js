@@ -1,10 +1,11 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private Money repo,
 // written by ./money --publish (rebuilt by its "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.07-4";
-import * as M from "./model.js?v=2026.11.07-4";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.07-4";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.11-1";
+import * as M from "./model.js?v=2026.11.11-1";
+import * as auth from "./shared-auth.js?v=2026.11.11-1";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.11-1";
 
-export const APP_VERSION = "2026.11.07-4";
+export const APP_VERSION = "2026.11.11-1";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -570,24 +571,34 @@ function settings() {
   view.append(el(`<h2>Settings</h2>
     <form class="settings card" id="sf">
       <p class="note">This page has no data of its own. It reads <code>${esc(s.path)}</code> from your private repo through GitHub's API with a token kept only in this browser.</p>
-      <label>GitHub token</label><input name="token" type="password" autocomplete="off" placeholder="github_pat_…" value="${esc(s.token)}">
-      <p class="note">Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>: Only select repositories → <b>${esc(s.repo)}</b> → Repository permissions → <b>Contents: Read-only</b> to view, or <b>Read and write</b> to change groups from the dropdowns. Set an expiry you're happy with.</p>
-      <label>Owner</label><input name="owner" value="${esc(s.owner)}">
+      <label>Owner</label><input name="owner" value="${esc(s.owner)}" autocomplete="username">
+      <label>GitHub token</label><input name="token" type="password" autocomplete="current-password" placeholder="github_pat_…" value="${esc(s.token)}">
+      <label>Token expires (for a reminder)</label><input name="expires" type="date" value="${esc(auth.loadShared().expires)}">
+      <p class="note">${auth.TOKEN_HELP} Read-only Contents is enough to view; changing groups from the dropdowns needs Read and write.</p>
       <label>Repository</label><input name="repo" value="${esc(s.repo)}">
       <label>Branch</label><input name="branch" value="${esc(s.branch)}">
       <label>Data file</label><input name="path" value="${esc(s.path)}">
       <p><button class="btn primary" type="submit">Save and load</button> <button class="btn" type="button" id="forget">Forget token and cached data</button></p>
+      <p class="note">Forgetting the token signs Keep and Fitness Log out on this device too.</p>
       <div id="smsg"></div>
       <p class="note">Version ${APP_VERSION}</p>
     </form>`));
   $("#sf").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    saveSettings({ ...DEFAULTS, ...Object.fromEntries([...f].map(([k, v]) => [k, String(v).trim()])) });
+    const v = Object.fromEntries([...f].map(([k, x]) => [k, String(x).trim()]));
+    auth.saveShared({ token: v.token, expires: v.expires });
+    delete v.expires;
+    saveSettings({ ...DEFAULTS, ...v }, { dropLegacyToken: true });
     await load(true);
     $("#smsg").innerHTML = model ? `<div class="msg">Loaded ${model.tx.length.toLocaleString()} transactions (${model.from} to ${model.to}).</div>` : "";
   });
-  $("#forget").addEventListener("click", () => { try { localStorage.removeItem("money:settings"); localStorage.removeItem("money:model"); } catch { /* fine */ } model = null; render(); });
+  $("#forget").addEventListener("click", () => {
+    if (!confirm("Forget the token? Keep and Fitness Log on this device use it too.")) return;
+    auth.saveShared({ token: "" });
+    try { localStorage.removeItem("money:settings"); localStorage.removeItem("money:model"); } catch { /* fine */ }
+    model = null; render();
+  });
 }
 
 // ---------- routing ----------
@@ -655,6 +666,8 @@ function render() {
   view.replaceChildren();
   if (v !== "groups") drill = { group: null, label: null };
   renderPeriod();
+  const banner = auth.expiryBanner();
+  if (banner) view.append(el(banner));
   if (v === "settings" || !model) {
     if (!model && v !== "settings") view.append(el(`<div class="msg">${isConfigured() ? "Loading…" : 'No data yet. Open <a href="#/settings">Settings</a> and add your GitHub token.'}</div>`));
     if (v === "settings") settings();

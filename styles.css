@@ -58,6 +58,7 @@ form.settings label { display: block; margin: 10px 0 4px; font-weight: 600; font
 form.settings input { width: 100%; font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); }
 .msg { margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); }
 .msg.err { border-color: var(--neg); }
+.token-banner { margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: var(--card); border: 1px solid var(--neg); }
 /* charts */
 .chart-wrap { width: 100%; overflow-x: auto; }
 svg.chart { width: 100%; min-width: 640px; height: auto; display: block; }

@@ -1,5 +1,7 @@
 // Reads the money model from the private Money repo. This page only talks to
-// api.github.com, with the read-only token saved on this device in Settings.
+// api.github.com, with the token saved on this device in Settings (shared with Keep and Fitness
+// Log through shared-auth.js).
+import { resolveToken } from "./shared-auth.js?v=2026.11.11-1";
 
 const API = "https://api.github.com";
 const KEY = "money:settings";
@@ -7,16 +9,19 @@ const CACHE = "money:model";
 
 export const DEFAULTS = { owner: "eason2561", repo: "Money", branch: "main", path: "assets/financial/money/model.json", token: "" };
 
-export function loadSettings() {
-  try {
-    const s = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || "{}") };
-    if (s.owner === "eason2561" && s.repo === "Wiki") s.repo = "Money";  // the data moved 2026-11-07
-    return s;
-  }
-  catch { return { ...DEFAULTS }; }
+function stored() {
+  try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; }
 }
-export function saveSettings(s) {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private window: settings last this visit only */ }
+export function loadSettings() {
+  const s = { ...DEFAULTS, ...stored() };
+  if (s.owner === "eason2561" && s.repo === "Wiki") s.repo = "Money";  // the data moved 2026-11-07
+  return { ...s, token: resolveToken(s.token) };
+}
+// The token itself is saved with shared-auth.js. A token this page saved before that is kept
+// until it's replaced, unless dropLegacyToken.
+export function saveSettings({ token, ...rest }, { dropLegacyToken = false } = {}) {
+  const legacy = dropLegacyToken ? "" : stored().token;
+  try { localStorage.setItem(KEY, JSON.stringify({ ...rest, ...(legacy ? { token: legacy } : {}) })); } catch { /* private window: settings last this visit only */ }
 }
 export const isConfigured = (s = loadSettings()) => Boolean(s.token && s.owner && s.repo && s.path);
 
