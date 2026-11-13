@@ -1,11 +1,11 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private Money repo,
 // written by ./money --publish (rebuilt by its "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile } from "./github.js?v=2026.11.11-1";
-import * as M from "./model.js?v=2026.11.11-1";
-import * as auth from "./shared-auth.js?v=2026.11.11-1";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.11-1";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile, runSync } from "./github.js?v=2026.11.13-1";
+import * as M from "./model.js?v=2026.11.13-1";
+import * as auth from "./shared-auth.js?v=2026.11.13-1";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.13-1";
 
-export const APP_VERSION = "2026.11.11-1";
+export const APP_VERSION = "2026.11.13-1";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -574,7 +574,7 @@ function settings() {
       <label>Owner</label><input name="owner" value="${esc(s.owner)}" autocomplete="username">
       <label>GitHub token</label><input name="token" type="password" autocomplete="current-password" placeholder="github_pat_…" value="${esc(s.token)}">
       <label>Token expires (for a reminder)</label><input name="expires" type="date" value="${esc(auth.loadShared().expires)}">
-      <p class="note">${auth.TOKEN_HELP} Read-only Contents is enough to view; changing groups from the dropdowns needs Read and write.</p>
+      <p class="note">${auth.TOKEN_HELP} Read-only Contents is enough to view; changing groups from the dropdowns needs Read and write, and the Sync button needs Actions: Read and write.</p>
       <label>Repository</label><input name="repo" value="${esc(s.repo)}">
       <label>Branch</label><input name="branch" value="${esc(s.branch)}">
       <label>Data file</label><input name="path" value="${esc(s.path)}">
@@ -712,4 +712,20 @@ document.addEventListener("click", (e) => {
   render();
 });
 $("#refresh").addEventListener("click", () => load(true));
+// Sync: ask GitHub to run the SimpleFIN workflow, wait for it, then load the rebuilt model.
+$("#sync").addEventListener("click", async () => {
+  const btn = $("#sync"), refresh = $("#refresh");
+  btn.disabled = refresh.disabled = true;
+  btn.textContent = "Syncing…";
+  try {
+    await runSync((t) => { statusEl.textContent = t; });
+    statusEl.textContent = "Sync done, loading…";
+    await load(true);
+  } catch (err) {
+    statusEl.textContent = err.message;
+  } finally {
+    btn.disabled = refresh.disabled = false;
+    btn.textContent = "Sync";
+  }
+});
 load();
