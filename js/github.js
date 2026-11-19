@@ -1,7 +1,7 @@
 // Reads the money model from the private Money repo. This page only talks to
 // api.github.com, with the token saved on this device in Settings (shared with Keep and Fitness
 // Log through shared-auth.js).
-import { resolveToken } from "./shared-auth.js?v=2026.11.13-1";
+import { resolveToken } from "./shared-auth.js?v=2026.11.19-1";
 
 const API = "https://api.github.com";
 const KEY = "money:settings";

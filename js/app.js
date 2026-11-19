@@ -1,11 +1,11 @@
 // Household Money dashboard. Data: assets/financial/money/model.json in the private Money repo,
 // written by ./money --publish (rebuilt by its "Money model" workflow when exports change).
-import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile, runSync } from "./github.js?v=2026.11.13-1";
-import * as M from "./model.js?v=2026.11.13-1";
-import * as auth from "./shared-auth.js?v=2026.11.13-1";
-import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.13-1";
+import { loadSettings, saveSettings, isConfigured, cachedModel, fetchModel, DEFAULTS, readFile, writeFile, runSync } from "./github.js?v=2026.11.19-1";
+import * as M from "./model.js?v=2026.11.19-1";
+import * as auth from "./shared-auth.js?v=2026.11.19-1";
+import { sankey, bars, hbars, line, money, esc } from "./charts.js?v=2026.11.19-1";
 
-export const APP_VERSION = "2026.11.13-1";
+export const APP_VERSION = "2026.11.19-1";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view"), periodEl = $("#period"), statusEl = $("#status");
@@ -588,6 +588,7 @@ function settings() {
     const f = new FormData(e.target);
     const v = Object.fromEntries([...f].map(([k, x]) => [k, String(x).trim()]));
     auth.saveShared({ token: v.token, expires: v.expires });
+    auth.syncExpiry();
     delete v.expires;
     saveSettings({ ...DEFAULTS, ...v }, { dropLegacyToken: true });
     await load(true);
@@ -712,6 +713,7 @@ document.addEventListener("click", (e) => {
   render();
 });
 $("#refresh").addEventListener("click", () => load(true));
+auth.syncExpiry().then((changed) => { if (changed) render(); });
 // Sync: ask GitHub to run the SimpleFIN workflow, wait for it, then load the rebuilt model.
 $("#sync").addEventListener("click", async () => {
   const btn = $("#sync"), refresh = $("#refresh");
